@@ -81,7 +81,9 @@ def all_positions(board):
 directions = [(0, 1), (1, 0), (0, -1), (-1, 0), (1, 1), (1, -1), (-1, -1), (-1, 1)]
 
 def is_valid_move(board, row, col, player):
-    # Check if the position is within the board and empty
+    """
+    boardが与えられたときrow行col1列目にplayerのいrの意思がおけるかどうか判断する。
+    """
     N = len(board)
     if row < 0 or row >= N or col < 0 or col >= N or board[row, col] != 0:
         return False
