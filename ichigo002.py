@@ -217,93 +217,69 @@ class RandomAI(OthelloAI):
         selected_move = random.choice(valid_moves)
         return selected_move
 
-import random
-import math
-
 class IchigoAI(OthelloAI):
-    def __init__(self, face, name, depth=3, exploration_weight=1.41):
-        self.face = face
-        self.name = name
-        self.depth = depth
+    def __init__(self, face, name, depth=3, exploration_weight=1.41, early_game_weight=2.0, mid_game_weight=1.5, end_game_weight=1.0):
+        super().__init__(face, name, depth)
         self.exploration_weight = exploration_weight
-        self.opening_book = {
-            # Add opening book moves here if desired
-        }
+        self.early_game_weight = early_game_weight
+        self.mid_game_weight = mid_game_weight
+        self.end_game_weight = end_game_weight
 
-    def move(self, board, color: int) -> tuple[int, int]:
-        if tuple(map(tuple, board.tolist())) in self.opening_book:
-            return self.opening_book[tuple(map(tuple, board.tolist()))]
+    def evaluate(self, board, color):
+        piece_diff = count_board(board, color) - count_board(board, -color)
+        mobility_diff = len(get_valid_moves(board, color)) - len(get_valid_moves(board, -color))
+        stability_diff = self.stability_score(board, color) - self.stability_score(board, -color)
+        corner_diff = self.corner_score(board, color) - self.corner_score(board, -color)
 
-        best_move = self.mcts(board, color, self.depth)
-        return best_move
+        game_phase = self.determine_game_phase(board)
+        if game_phase == "early":
+            return self.early_game_weight * (piece_diff + 2 * mobility_diff + 3 * stability_diff + 5 * corner_diff)
+        elif game_phase == "mid":
+            return self.mid_game_weight * (piece_diff + 2 * mobility_diff + 3 * stability_diff + 5 * corner_diff)
+        else:
+            return self.end_game_weight * (piece_diff + 2 * mobility_diff + 3 * stability_diff + 5 * corner_diff)
 
-    def mcts(self, board, color, iterations):
-        root = Node(board, None, color)
+    def determine_game_phase(self, board):
+        empty_squares = count_board(board, EMPTY)
+        if empty_squares > len(board) * len(board) * 0.6:
+            return "early"
+        elif empty_squares > len(board) * len(board) * 0.2:
+            return "mid"
+        else:
+            return "end"
 
-        for _ in range(iterations):
-            node = root
-            while not node.is_terminal() and node.is_fully_expanded():
-                node = node.select_child()
-            if not node.is_terminal():
-                node = node.expand()
+    def stability_score(self, board, color):
+        stable_score = 0
+        for r in range(len(board)):
+            for c in range(len(board[r])):
+                if board[r, c] == color:
+                    stable_score += self.get_stability_at_position(board, r, c)
+        return stable_score
 
-            result = self.simulate(node, color)
-            node.backpropagate(result)
+    def get_stability_at_position(self, board, row, col):
+        stability = 0
+        for dr, dc in directions:
+            r, c = row + dr, col + dc
+            while 0 <= r < len(board) and 0 <= c < len(board[0]) and board[r, c] == 0:
+                r, c = r + dr, c + dc
+            if 0 <= r < len(board) and 0 <= c < len(board[0]) and board[r, c] == board[row, col]:
+                stability += 1
+        return stability
 
-        best_child = max(root.children, key=lambda child: child.visit_count)
-        return best_child.move
+    def corner_score(self, board, color):
+        corners = [(0, 0), (0, len(board) - 1), (len(board) - 1, 0), (len(board) - 1, len(board) - 1)]
+        corner_count = 0
+        for corner in corners:
+            if board[corner[0], corner[1]] == color:
+                corner_count += 1
+                corner_count += self.get_mobility_around_corner(board, corner[0], corner[1], color)
+        return corner_count
 
-    def simulate(self, node, color):
-        board = node.board.copy()
-        current_color = color
-        while True:
-            valid_moves = get_valid_moves(board, current_color)
-            if not valid_moves:
-                break
-            move = random.choice(valid_moves)
-            flip_stones(board, move[0], move[1], current_color)
-            current_color = -current_color
-
-        return count_board(board, color) - count_board(board, -color)
-
-class Node:
-    def __init__(self, board, move, color, parent=None):
-        self.board = board
-        self.move = move
-        self.color = color
-        self.parent = parent
-        self.children = []
-        self.visit_count = 0
-        self.win_score = 0
-
-    def is_terminal(self):
-        return len(get_valid_moves(self.board, self.color)) == 0
-
-    def is_fully_expanded(self):
-        return len(self.children) == len(get_valid_moves(self.board, self.color))
-
-    def select_child(self):
-        exploration_term = self.exploration_weight * math.sqrt(math.log(self.visit_count) / (1 + self.visit_count))
-        child = max(self.children, key=lambda child: child.ucb_score(exploration_term))
-        return child
-
-    def expand(self):
-        valid_moves = get_valid_moves(self.board, self.color)
-        move = random.choice(valid_moves)
-        new_board = self.board.copy()
-        flip_stones(new_board, move[0], move[1], self.color)
-        child = Node(new_board, move, -self.color, parent=self)
-        self.children.append(child)
-        return child
-
-    def backpropagate(self, result):
-        self.visit_count += 1
-        self.win_score += result
-        if self.parent:
-            self.parent.backpropagate(result)
-
-    def ucb_score(self, exploration_term):
-        if self.visit_count == 0:
-            return float('inf')
-        exploitation = self.win_score / self.visit_count
-        return exploitation + exploration_term
+    def get_mobility_around_corner(self, board, row, col, color):
+        mobility = 0
+        for dr, dc in directions:
+            r, c = row + dr, col + dc
+            while 0 <= r < len(board) and 0 <= c < len(board[0]) and board[r, c] == 0:
+                r, c = r + dr, c + dc
+                mobility += 1
+        return mobility
