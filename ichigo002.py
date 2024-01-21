@@ -216,3 +216,43 @@ class RandomAI(OthelloAI):
         # ランダムに選ぶ
         selected_move = random.choice(valid_moves)
         return selected_move
+
+class IchigoAI(OthelloAI):
+    def __init__(self, face, name):
+        self.face = face
+        self.name = name
+
+    def move(self, board, color: int)->tuple[int, int]:
+        """
+        ボードが与えられたとき、どこに置くか(row,col)を返す
+        """
+        valid_moves = get_valid_moves(board, color)
+
+        # Check if any move captures a corner
+        for move in valid_moves:
+            if move in [(0, 0), (0, len(board) - 1), (len(board) - 1, 0), (len(board) - 1, len(board) - 1)]:
+                return move
+
+        # Prioritize edges and avoid the immediate diagonals of the corners
+        edges = [(0, i) for i in range(1, len(board) - 1)] + [(i, 0) for i in range(1, len(board) - 1)] + [
+            (i, len(board) - 1) for i in range(1, len(board) - 1)] + [(len(board) - 1, i) for i in range(1, len(board) - 1)]
+
+        # Filter moves to consider only edges
+        edge_moves = [move for move in valid_moves if move in edges]
+
+        # If there are edge moves, prioritize them
+        if edge_moves:
+            selected_move = random.choice(edge_moves)
+        else:
+            # In the mid-game, prioritize moves with fewer adjacent empty spaces
+            mid_game_moves = [(r, c) for r, c in valid_moves if
+                              len(get_valid_moves(board, color, row=r, col=c)) < 3]
+
+            # If there are mid-game moves, prioritize them
+            if mid_game_moves:
+                selected_move = random.choice(mid_game_moves)
+            else:
+                # Otherwise, choose randomly from all valid moves
+                selected_move = random.choice(valid_moves)
+
+        return selected_move
