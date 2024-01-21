@@ -217,11 +217,15 @@ class RandomAI(OthelloAI):
         selected_move = random.choice(valid_moves)
         return selected_move
 
+import random
+import math
+
 class IchigoAI(OthelloAI):
-    def __init__(self, face, name, depth=3):
+    def __init__(self, face, name, depth=3, exploration_weight=1.41):
         self.face = face
         self.name = name
         self.depth = depth
+        self.exploration_weight = exploration_weight
         self.opening_book = {
             # Add opening book moves here if desired
         }
@@ -230,63 +234,76 @@ class IchigoAI(OthelloAI):
         if tuple(map(tuple, board.tolist())) in self.opening_book:
             return self.opening_book[tuple(map(tuple, board.tolist()))]
 
-        best_eval, best_move = float('-inf'), None
-        for depth in range(1, self.depth + 1):
-            eval, move = self.minimax(board, color, depth, float('-inf'), float('inf'), True)
-            if eval > best_eval:
-                best_eval, best_move = eval, move
-
+        best_move = self.mcts(board, color, self.depth)
         return best_move
 
-    def minimax(self, board, color, depth, alpha, beta, maximizing_player):
-        if depth == 0 or len(get_valid_moves(board, color)) == 0:
-            return self.evaluate(board, color), None
+    def mcts(self, board, color, iterations):
+        root = Node(board, None, color)
 
-        valid_moves = get_valid_moves(board, color)
-        if maximizing_player:
-            max_eval = float('-inf')
-            best_move = None
-            for move in valid_moves:
-                new_board = board.copy()
-                flip_stones(new_board, move[0], move[1], color)
-                eval, _ = self.minimax(new_board, -color, depth - 1, alpha, beta, False)
-                if eval > max_eval:
-                    max_eval = eval
-                    best_move = move
-                alpha = max(alpha, eval)
-                if beta <= alpha:
-                    break
-            return max_eval, best_move
-        else:
-            min_eval = float('inf')
-            best_move = None
-            for move in valid_moves:
-                new_board = board.copy()
-                flip_stones(new_board, move[0], move[1], color)
-                eval, _ = self.minimax(new_board, -color, depth - 1, alpha, beta, True)
-                if eval < min_eval:
-                    min_eval = eval
-                    best_move = move
-                beta = min(beta, eval)
-                if beta <= alpha:
-                    break
-            return min_eval, best_move
+        for _ in range(iterations):
+            node = root
+            while not node.is_terminal() and node.is_fully_expanded():
+                node = node.select_child()
+            if not node.is_terminal():
+                node = node.expand()
 
-    def evaluate(self, board, color):
-        # Add more advanced evaluation factors here
-        piece_diff = count_board(board, color) - count_board(board, -color)
-        mobility_diff = len(get_valid_moves(board, color)) - len(get_valid_moves(board, -color))
-        stability_diff = self.stability_score(board, color) - self.stability_score(board, -color)
-        corner_diff = self.corner_score(board, color) - self.corner_score(board, -color)
+            result = self.simulate(node, color)
+            node.backpropagate(result)
 
-        return piece_diff + 2 * mobility_diff + 3 * stability_diff + 5 * corner_diff
+        best_child = max(root.children, key=lambda child: child.visit_count)
+        return best_child.move
 
-    def stability_score(self, board, color):
-        # Implement a more advanced stability calculation
-        # ...
-        return 0  # Placeholder for now
+    def simulate(self, node, color):
+        board = node.board.copy()
+        current_color = color
+        while True:
+            valid_moves = get_valid_moves(board, current_color)
+            if not valid_moves:
+                break
+            move = random.choice(valid_moves)
+            flip_stones(board, move[0], move[1], current_color)
+            current_color = -current_color
 
-    def corner_score(self, board, color):
-        # Implement a more advanced corner occupancy calculation
-        # ...
-        return 0  # Placeholder for now
+        return count_board(board, color) - count_board(board, -color)
+
+class Node:
+    def __init__(self, board, move, color, parent=None):
+        self.board = board
+        self.move = move
+        self.color = color
+        self.parent = parent
+        self.children = []
+        self.visit_count = 0
+        self.win_score = 0
+
+    def is_terminal(self):
+        return len(get_valid_moves(self.board, self.color)) == 0
+
+    def is_fully_expanded(self):
+        return len(self.children) == len(get_valid_moves(self.board, self.color))
+
+    def select_child(self):
+        exploration_term = self.exploration_weight * math.sqrt(math.log(self.visit_count) / (1 + self.visit_count))
+        child = max(self.children, key=lambda child: child.ucb_score(exploration_term))
+        return child
+
+    def expand(self):
+        valid_moves = get_valid_moves(self.board, self.color)
+        move = random.choice(valid_moves)
+        new_board = self.board.copy()
+        flip_stones(new_board, move[0], move[1], self.color)
+        child = Node(new_board, move, -self.color, parent=self)
+        self.children.append(child)
+        return child
+
+    def backpropagate(self, result):
+        self.visit_count += 1
+        self.win_score += result
+        if self.parent:
+            self.parent.backpropagate(result)
+
+    def ucb_score(self, exploration_term):
+        if self.visit_count == 0:
+            return float('inf')
+        exploitation = self.win_score / self.visit_count
+        return exploitation + exploration_term
