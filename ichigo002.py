@@ -217,6 +217,7 @@ class RandomAI(OthelloAI):
         selected_move = random.choice(valid_moves)
         return selected_move
 
+
 class IchigoAI(OthelloAI):
     def __init__(self, face, name):
         self.face = face
