@@ -222,13 +222,21 @@ class IchigoAI(OthelloAI):
         self.face = face
         self.name = name
         self.depth = depth
+        self.opening_book = {
+            # Add opening book moves here if desired
+        }
 
-    def move(self, board, color: int)->tuple[int, int]:
-        """
-        ボードが与えられたとき、どこに置くか(row,col)を返す
-        """
-        _, move = self.minimax(board, color, self.depth, float('-inf'), float('inf'), True)
-        return move
+    def move(self, board, color: int) -> tuple[int, int]:
+        if tuple(map(tuple, board.tolist())) in self.opening_book:
+            return self.opening_book[tuple(map(tuple, board.tolist()))]
+
+        best_eval, best_move = float('-inf'), None
+        for depth in range(1, self.depth + 1):
+            eval, move = self.minimax(board, color, depth, float('-inf'), float('inf'), True)
+            if eval > best_eval:
+                best_eval, best_move = eval, move
+
+        return best_move
 
     def minimax(self, board, color, depth, alpha, beta, maximizing_player):
         if depth == 0 or len(get_valid_moves(board, color)) == 0:
@@ -265,5 +273,20 @@ class IchigoAI(OthelloAI):
             return min_eval, best_move
 
     def evaluate(self, board, color):
-        # A simple evaluation function: the difference in the number of pieces.
-        return count_board(board, color) - count_board(board, -color)
+        # Add more advanced evaluation factors here
+        piece_diff = count_board(board, color) - count_board(board, -color)
+        mobility_diff = len(get_valid_moves(board, color)) - len(get_valid_moves(board, -color))
+        stability_diff = self.stability_score(board, color) - self.stability_score(board, -color)
+        corner_diff = self.corner_score(board, color) - self.corner_score(board, -color)
+
+        return piece_diff + 2 * mobility_diff + 3 * stability_diff + 5 * corner_diff
+
+    def stability_score(self, board, color):
+        # Implement a more advanced stability calculation
+        # ...
+        return 0  # Placeholder for now
+
+    def corner_score(self, board, color):
+        # Implement a more advanced corner occupancy calculation
+        # ...
+        return 0  # Placeholder for now
